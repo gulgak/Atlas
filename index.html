@@ -745,26 +745,28 @@ function openPatientForm(pat){
 let draftPoints=[];
 function openVisitForm(pid){
   const pat=patients.find(p=>p.id===pid); if(!pat)return;
-  draftPoints=tray.slice();
+  draftPoints=[];
   const today=new Date().toISOString().slice(0,10);
   $("detail").innerHTML=`
     <div class="dtop"><div><div class="dname">Nueva visita</div><div class="dnative">${esc(pat.name)}</div></div><button class="dclose" id="dclose">×</button></div>
     <div class="field"><label>Fecha</label><input id="vfecha" type="date" value="${today}"></div>
-    <div class="field"><label>Motivo / dolencia</label><input id="vmotivo" type="text" placeholder="p. ej. lumbalgia"></div>
+    <div class="field"><label>Motivo / dolencia</label><input id="vmotivo" type="text" placeholder="Motivo de la consulta"></div>
     <div class="field"><label>Tratamiento (puntos y fórmulas)</label>
       <div id="vchips"></div>
+      ${tray.length?`<button class="btn ghost sm" id="vfromtray" style="margin-top:8px">+ Añadir los ${tray.length} puntos de la sesión actual</button>`:""}
       <input id="vsearch" type="text" placeholder="Busca un punto o fórmula para añadir…" style="margin-top:8px">
       <div id="vhits"></div>
     </div>
     <div class="field"><label>Notas</label><textarea id="vnotas" placeholder="Evolución, técnica, observaciones…"></textarea></div>
     <button class="btn" id="vsave" style="margin-top:16px;width:100%">Guardar visita</button>
-    <div class="privacy">${tray.length?"Se han precargado los puntos de tu sesión actual. ":""}Datos guardados solo en este dispositivo.</div>`;
+    <div class="privacy">Datos guardados solo en este dispositivo.</div>`;
   $("dclose").onclick=close;
   const upd=()=>{
     $("vchips").innerHTML=draftPoints.length?draftPoints.map(id=>`<span class="txchip">${esc(labelFor(id))}<button data-rm="${id}">×</button></span>`).join(""):'<span style="font-size:12px;color:#9aa1b0">Sin puntos aún</span>';
     $("vchips").querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{draftPoints=draftPoints.filter(x=>x!==b.dataset.rm);upd();});
   };
   upd();
+  const vft=$("vfromtray"); if(vft) vft.onclick=()=>{ tray.forEach(id=>{ if(!draftPoints.includes(id)) draftPoints.push(id); }); upd(); vft.disabled=true; vft.textContent="✓ Puntos de la sesión añadidos"; };
   const vs=$("vsearch");
   vs.oninput=()=>{ const n=norm(vs.value); const hits=$("vhits");
     if(!n){hits.innerHTML="";return;}

@@ -1,5 +1,5 @@
-/* 경혈 Atlas — service worker (offline) */
-const CACHE = 'gyeol-atlas-v1';
+/* 경혈 Atlas — service worker (offline + actualización fiable) */
+const CACHE = 'gyeol-atlas-v2';
 const CORE = [
   './',
   './index.html',
@@ -25,13 +25,22 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return; // no interceptar POST (p.ej. API Gemini)
-  e.respondWith(
-    caches.match(req).then(hit => hit || fetch(req).then(res => {
-      try {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
-      } catch (_) {}
-      return res;
-    }).catch(() => req.mode === 'navigate' ? caches.match('./index.html') : undefined))
-  );
+  const isHTML = req.mode === 'navigate' || req.destination === 'document' || /\.html($|\?)/.test(req.url);
+  if (isHTML) {
+    // PRIMERO RED: siempre intenta la última versión; si no hay internet, usa la caché
+    e.respondWith(
+      fetch(req).then(res => {
+        try { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {}); } catch (_) {}
+        return res;
+      }).catch(() => caches.match(req).then(hit => hit || caches.match('./index.html')))
+    );
+  } else {
+    // PRIMERO CACHÉ para estáticos (iconos, manifest)
+    e.respondWith(
+      caches.match(req).then(hit => hit || fetch(req).then(res => {
+        try { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {}); } catch (_) {}
+        return res;
+      }))
+    );
+  }
 });
