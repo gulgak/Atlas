@@ -1,0 +1,20 @@
+{
+  "name": "경혈 Atlas",
+  "short_name": "경혈 Atlas",
+  "description": "Atlas de acupuntura: terapia coreana de mano (KHT), Saam, TCM, auricular y diagnóstico de lengua. Funciona sin conexión.",
+  "lang": "es",
+  "dir": "ltr",
+  "id": "io.github.gulgak.gyeolatlas",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf8f3",
+  "theme_color": "#2E7D6B",
+  "categories": ["medical", "health", "education"],
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
