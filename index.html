@@ -100,6 +100,9 @@
   .visit .vdate{font-weight:600;font-size:13px}
   .txchip{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--jade-tint);color:#246b5b;border:1px solid #cfe6df;border-radius:999px;padding:3px 9px;margin:4px 4px 0 0}
   .txchip button{border:0;background:transparent;color:#246b5b;cursor:pointer;font-size:14px;line-height:1;padding:0}
+  .txchip.tap{cursor:pointer}
+  .txchip.tap:active{filter:brightness(.95)}
+  .txgo{font-size:11px;color:#246b5b}
   .minihit{display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;margin-top:6px;cursor:pointer;background:#fff;font-size:13px}
   .minihit:hover{border-color:var(--jade)}
   .privacy{font-size:11.5px;color:#9aa1b0;margin-top:16px;line-height:1.5}
@@ -445,6 +448,7 @@ function switchView(v){
   $("twrap").style.display=v==="lengua"?"block":"none";
   $("vwrap3d").style.display=v==="lamina"?"block":"none";
   if(v==="pacientes") renderPatients();
+  if(v==="lengua"){ const tr=$("tresult"); if(tr && !tr.innerHTML.trim()){ const last=store.get("acu_tongue_last"); if(last){ try{renderTongue(last);}catch(e){} } } }
   if(v==="lamina") setTimeout(initChart,30);
 }
 
@@ -694,7 +698,7 @@ function renderPatients(){
 function openPatient(id){
   const pat=patients.find(p=>p.id===id); if(!pat)return;
   const visits=(pat.visits||[]).slice().reverse().map(v=>{
-    const tx=(v.points||[]).map(pid=>`<span class="txchip">${esc(labelFor(pid))}</span>`).join("");
+    const tx=(v.points||[]).map(pid=>{const tap=ptById[pid]||DATA.protocols.find(x=>x.id===pid);return `<span class="txchip${tap?' tap':''}"${tap?` data-pt="${esc(pid)}"`:''}>${esc(labelFor(pid))}${tap?' <span class="txgo">↗</span>':''}</span>`;}).join("");
     return `<div class="visit"><div class="vdate">${esc(v.date)} · ${esc(v.motivo||"—")}</div><div style="margin-top:6px">${tx||'<span style="font-size:12px;color:#9aa1b0">sin puntos</span>'}</div>${v.notas?`<div class="kv" style="margin-top:8px;color:var(--ink-soft)">${esc(v.notas)}</div>`:""}</div>`;
   }).join("")||'<div style="font-size:13px;color:#9aa1b0;margin-top:8px">Sin visitas todavía.</div>';
   $("detail").innerHTML=`
@@ -712,6 +716,11 @@ function openPatient(id){
   $("pnewvisit").onclick=()=>openVisitForm(pat.id);
   $("pedit").onclick=()=>openPatientForm(pat);
   $("pdel").onclick=()=>{ if(window.confirm("¿Eliminar este paciente y todo su historial?")){ patients=patients.filter(x=>x.id!==pat.id); persistPatients(); close(); renderPatients(); } };
+  $("detail").querySelectorAll(".txchip[data-pt]").forEach(ch=>ch.onclick=()=>{
+    const pid=ch.dataset.pt, t=ptById[pid];
+    if(t){ state.style=t.style_id; buildSystems(); render(); openPoint(pid); } else { openProto(pid); }
+    const dc=$("dclose"); if(dc) dc.onclick=()=>openPatient(id);
+  });
   open();
 }
 function openPatientForm(pat){
@@ -791,8 +800,8 @@ async function analyzeTongue(){
   if(!tongueImg) return;
   const btn=$("tanalyze"); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Analizando…';
   const prompt=`Eres un asistente de Medicina Tradicional China experto en diagnóstico por la lengua (舌診). Analiza ÚNICAMENTE lo visible en la foto de la lengua. Responde SOLO con JSON válido, sin texto adicional ni markdown, con esta forma exacta:
-{"calidad_imagen":"buena|regular|insuficiente","cuerpo":{"color":"","forma":"","humedad":"","grietas":"","marcas_dentales":""},"capa":{"color":"","grosor":"","distribucion":"","humedad":""},"patrones":[{"patron":"","signos":"","confianza":"alta|media|baja"}],"puntos_sugeridos":["LU-7","ST-36"],"recomendaciones":"","advertencia":""}
-Reglas: sé prudente; si la imagen es insuficiente dilo y baja la confianza; usa terminología MTC en español; en puntos_sugeridos usa códigos estándar (LU-7, ST-36, SP-6...); no diagnostiques enfermedades occidentales.`;
+{"calidad_imagen":"buena|regular|insuficiente","cuerpo":{"color":"","forma":"","humedad":"","grietas":"","marcas_dentales":""},"capa":{"color":"","grosor":"","distribucion":"","humedad":""},"patrones":[{"patron":"","signos":"","confianza":"alta|media|baja"}],"puntos_sugeridos":["LU-7","ST-36"],"recomendaciones":{"alimentacion_favorecer":"","alimentacion_evitar":"","estilo_vida":""},"advertencia":""}
+Reglas: sé prudente; si la imagen es insuficiente dilo y baja la confianza; usa terminología MTC en español; en puntos_sugeridos usa códigos estándar (LU-7, ST-36, SP-6...); no diagnostiques enfermedades occidentales. En recomendaciones rellena alimentacion_favorecer y alimentacion_evitar con alimentos concretos según la dietética china del patrón observado, y estilo_vida con hábitos (sueño, actividad, respiración).`;
   try{
     const body={contents:[{parts:[{text:prompt},{inline_data:{mime_type:tongueImg.mime,data:tongueImg.b64}}]}],generationConfig:{response_mime_type:"application/json",temperature:0.4}};
     const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent?key="+encodeURIComponent(key),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -808,10 +817,15 @@ Reglas: sé prudente; si la imagen es insuficiente dilo y baja la confianza; usa
 }
 $("tanalyze").onclick=analyzeTongue;
 function renderTongue(r){
+  try{store.set("acu_tongue_last", r);}catch(e){}
   const cu=r.cuerpo||{}, ca=r.capa||{};
   const kv=(k,v)=>v?`<div class="kv"><b>${k}:</b> ${esc(v)}</div>`:"";
   const pats=(r.patrones||[]).map(p=>`<div class="pat"><div class="pname">${esc(p.patron||"—")}<span class="conf ${esc((p.confianza||"baja").toLowerCase())}">${esc(p.confianza||"baja")}</span></div><div class="kv" style="color:var(--ink-soft);margin-top:3px">${esc(p.signos||"")}</div></div>`).join("");
   const pts=(r.puntos_sugeridos||[]).map(code=>{const p=ptByCode[codeKey(code)]; return `<span class="txchip" ${p?`data-open="${p.id}" style="cursor:pointer"`:""}>${esc(p?p.code+" "+p.name:code)}</span>`;}).join("");
+  let recoHtml="";
+  { const rc=r.recomendaciones;
+    if(rc){ if(typeof rc==="string"){ if(rc.trim()) recoHtml=`<div class="kv" style="color:var(--ink-soft)">${esc(rc)}</div>`; }
+      else { recoHtml=[["Favorecer",rc.alimentacion_favorecer],["Evitar / moderar",rc.alimentacion_evitar],["Estilo de vida",rc.estilo_vida]].filter(x=>x[1]).map(x=>`<div class="kv"><b>${x[0]}:</b> ${esc(x[1])}</div>`).join(""); } } }
   $("tresult").innerHTML=`<div class="res">
     <h3>Lectura de la lengua</h3>
     <div class="kv" style="color:#9aa1b0;font-size:12px">Calidad de imagen: ${esc(r.calidad_imagen||"—")}</div>
@@ -821,11 +835,56 @@ function renderTongue(r){
     </div>
     ${pats?`<div class="sect"><h4>Patrones sugeridos</h4>${pats}</div>`:""}
     ${pts?`<div class="sect"><h4>Puntos a considerar</h4><div>${pts}</div><button class="btn ghost sm" id="tAddAll" style="margin-top:10px">+ Añadir todos a la sesión</button></div>`:""}
-    ${r.recomendaciones?`<div class="sect"><h4>Orientación</h4><div class="kv" style="color:var(--ink-soft)">${esc(r.recomendaciones)}</div></div>`:""}
+    ${recoHtml?`<div class="sect"><h4>Orientación</h4>${recoHtml}</div>`:""}
     <div class="warnbox">${esc(r.advertencia||"Lectura orientativa generada por IA. Confírmala con tu propia inspección; no es un diagnóstico médico.")}</div>
+    <button class="btn sm" id="tSave" style="margin-top:6px;width:100%">Guardar en paciente</button>
   </div>`;
   $("tresult").querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>{const p=ptById[b.dataset.open]; state.style=p.style_id; switchView("atlas"); buildSystems(); render(); openPoint(b.dataset.open);});
   const all=$("tAddAll"); if(all) all.onclick=()=>{ (r.puntos_sugeridos||[]).forEach(code=>{const p=ptByCode[codeKey(code)]; if(p)addToTray(p.id);}); all.textContent="✓ Añadidos a la sesión"; };
+  const sv=$("tSave"); if(sv) sv.onclick=()=>openSaveTongue(r);
+}
+function tongueNotes(r){
+  const cu=r.cuerpo||{}, ca=r.capa||{}, L=[];
+  if(r.calidad_imagen) L.push("Calidad de imagen: "+r.calidad_imagen);
+  const cuerpo=[["Color",cu.color],["Forma",cu.forma],["Humedad",cu.humedad],["Grietas",cu.grietas],["Marcas dentales",cu.marcas_dentales]].filter(x=>x[1]).map(x=>x[0]+": "+x[1]).join("; ");
+  if(cuerpo) L.push("Cuerpo — "+cuerpo+".");
+  const capa=[["Color",ca.color],["Grosor",ca.grosor],["Distribución",ca.distribucion],["Humedad",ca.humedad]].filter(x=>x[1]).map(x=>x[0]+": "+x[1]).join("; ");
+  if(capa) L.push("Saburra — "+capa+".");
+  if((r.patrones||[]).length){ L.push("Patrones:"); r.patrones.forEach(p=>L.push(" • "+(p.patron||"—")+(p.confianza?" ("+p.confianza+")":"")+(p.signos?" — "+p.signos:""))); }
+  const rc=r.recomendaciones;
+  if(rc){ if(typeof rc==="string"){ if(rc.trim()) L.push("Recomendaciones: "+rc); }
+    else { if(rc.alimentacion_favorecer) L.push("Recomendaciones · Alimentación a favorecer: "+rc.alimentacion_favorecer);
+           if(rc.alimentacion_evitar) L.push("Recomendaciones · Alimentación a evitar/moderar: "+rc.alimentacion_evitar);
+           if(rc.estilo_vida) L.push("Recomendaciones · Estilo de vida: "+rc.estilo_vida); } }
+  if((r.puntos_sugeridos||[]).length) L.push("Puntos sugeridos: "+r.puntos_sugeridos.join(", ")+".");
+  if(r.advertencia) L.push("Advertencia: "+r.advertencia);
+  return L.join("\n");
+}
+function openSaveTongue(r){
+  const today=new Date().toISOString().slice(0,10);
+  const list = patients.length
+    ? patients.map(p=>`<button class="btn ghost sm psel" data-pid="${esc(p.id)}" style="display:block;width:100%;text-align:left;margin-bottom:6px">${esc(p.name)}${p.constitution?` · ${esc(p.constitution)}`:""}</button>`).join("")
+    : `<div class="kv" style="color:#9aa1b0">No hay pacientes todavía. Crea uno abajo.</div>`;
+  $("detail").innerHTML=`
+    <div class="dtop"><div><div class="dname">Guardar lectura en paciente</div><div class="dnative">Diagnóstico de lengua · ${today}</div></div><button class="dclose" id="dclose">×</button></div>
+    <div class="sect"><h4>Elegir paciente</h4>${list}</div>
+    <div class="sect"><h4>O crear uno nuevo</h4>
+      <div class="field"><input id="newpat" type="text" placeholder="Nombre del paciente nuevo"></div>
+      <button class="btn sm" id="newpatsave" style="margin-top:8px">Crear y guardar aquí</button>
+    </div>`;
+  $("dclose").onclick=close;
+  $("detail").querySelectorAll(".psel").forEach(b=>b.onclick=()=>doSaveTongue(r,b.dataset.pid));
+  $("newpatsave").onclick=()=>{ const nm=($("newpat").value||"").trim(); if(!nm){ $("newpat").focus(); return; } const np={id:uid(),name:nm,constitution:"",contacto:"",notas:"",visits:[]}; patients.push(np); persistPatients(); doSaveTongue(r,np.id); };
+  open();
+}
+function doSaveTongue(r,pid){
+  const pat=patients.find(p=>p.id===pid); if(!pat)return;
+  const today=new Date().toISOString().slice(0,10);
+  const pointIds=(r.puntos_sugeridos||[]).map(c=>{const p=ptByCode[codeKey(c)];return p?p.id:null;}).filter(Boolean);
+  pat.visits=pat.visits||[];
+  pat.visits.push({date:today, motivo:"Diagnóstico de lengua (舌診)", points:pointIds, notas:tongueNotes(r)});
+  persistPatients();
+  switchView("pacientes"); renderPatients(); openPatient(pid);
 }
 function openAISettings(prompted){
   $("detail").innerHTML=`
